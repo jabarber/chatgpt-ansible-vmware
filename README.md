@@ -16,10 +16,6 @@ Also follow along in the video to get a better understanding as to what's going 
 
 ### Setting up:
 
-* Install the required tools:
-  ```bash
-  pip install -r requirements.txt
-
 * setup python virtual environment
   ```bash
   python3.8 -m venv ~/python3env
