@@ -1,0 +1,17 @@
+project commands: 
+
+x.  setup python virtual environment 
+    python3.8 -m venv ~/python3env
+    source ~/python3env/bin/activate
+
+    # upgrade pip 
+    pip install --upgrade pip
+
+x.  install ansible core 
+    pip install ansible
+
+x.  install vmware ansible collection 
+    ansible-galaxy collection install community.vmware
+
+x.  install more pip stuff for vmware 
+    pip install pyVmomi requests

@@ -1,0 +1,125 @@
+---
+- name: VMWare VM Management Playbook
+  hosts: localhost
+  gather_facts: no
+  vars:
+    vcenterhost: vcenter.rtfm.com
+    vmname: vcserver01.rtfmlab.com
+    vmuser: "administrator@rtfmvsphere.local"
+    datacenter: "Datacenter"
+    datastore: "DatastoreNFS01"
+    cluster: "Cluster01"
+    network: "HostOnly Network"
+    folder: "/SelfServe"
+    remove_vm: false  # Default value
+
+  vars_prompt:
+    - name: "vmpassword"
+      prompt: "Enter the VM User Password"
+      private: yes
+
+  tasks:
+    - name: Remove VM if remove_vm is true
+      block:
+        - name: Power off VM
+          vmware_guest_powerstate:
+            hostname: "{{ vcenterhost }}"
+            username: "{{ vmuser }}"
+            password: "{{ vmpassword }}"
+            validate_certs: no
+            folder: "{{ folder }}"
+            name: "{{ vmname }}"
+            state: powered-off
+          delegate_to: localhost
+
+        - name: Pause for 10 seconds
+          pause:
+            seconds: 10
+
+        - name: Remove VM
+          vmware_guest:
+            hostname: "{{ vcenterhost }}"
+            username: "{{ vmuser }}"
+            password: "{{ vmpassword }}"
+            validate_certs: no
+            folder: "{{ folder }}"
+            name: "{{ vmname }}"
+            state: absent
+          delegate_to: localhost
+      when: remove_vm
+
+    - name: Create and Manage VM if remove_vm is false or not defined
+      block:
+        - name: Create VM
+          vmware_guest:
+            hostname: "{{ vcenterhost }}"
+            username: "{{ vmuser }}"
+            password: "{{ vmpassword }}"
+            validate_certs: no
+            folder: "{{ folder }}"
+            name: "{{ vmname }}"
+            state: present
+            template: RHEL8v2
+            datacenter: "{{ datacenter }}"
+            datastore: "{{ datastore }}"
+            cluster: "{{ cluster }}"
+            wait_for_ip_address: true
+            networks:
+              - name: "{{ network }}"
+            hardware:
+              memory_mb: 32768
+              num_cpus: 4
+              scsi: paravirtual
+            disk:
+              - size_gb: 50
+                type: thin
+                datastore: "{{ datastore }}"
+              - size_gb: 300
+                type: thin
+                datastore: "{{ datastore }}"
+          delegate_to: localhost
+          register: vm_details
+
+        - name: Power on VM
+          vmware_guest_powerstate:
+            hostname: "{{ vcenterhost }}"
+            username: "{{ vmuser }}"
+            password: "{{ vmpassword }}"
+            validate_certs: no
+            folder: "{{ folder }}"
+            name: "{{ vmname }}"
+            state: powered-on
+          delegate_to: localhost
+
+        - name: Wait for SSH to be available
+          wait_for:
+            host: "{{ vm_details.instance.ipv4 }}"
+            port: 22
+            timeout: 300
+
+        - name: Run hostnamectl on the new VM
+          command: hostnamectl
+          delegate_to: "{{ vm_details.instance.ipv4 }}"
+
+        - name: Set /etc/motd
+          lineinfile:
+            path: /etc/motd
+            line: "This is a dev server"
+          delegate_to: "{{ vm_details.instance.ipv4 }}"
+
+        - name: Log build date and time
+          command: "echo $(date) >> /var/log/build_date"
+          delegate_to: "{{ vm_details.instance.ipv4 }}"
+
+        - name: Add user account devuser01
+          user:
+            name: devuser01
+            state: present
+          delegate_to: "{{ vm_details.instance.ipv4 }}"
+
+        - name: Install httpd
+          package:
+            name: httpd
+            state: present
+          delegate_to: "{{ vm_details.instance.ipv4 }}"
+      when: not remove_vm
